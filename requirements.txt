@@ -1,3 +1,4 @@
+# 核心依赖（纯 HTTP 模式，无需浏览器／图形界面）
 curl_cffi
 beautifulsoup4
 python-dotenv

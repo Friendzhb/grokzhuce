@@ -1,3 +1,4 @@
+import asyncio
 import os, json, random, string, time, re, struct
 import threading
 import concurrent.futures
@@ -7,6 +8,7 @@ from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from g import EmailService, TurnstileService, UserAgreementService, NsfwSettingsService, FlareSolverrService
+from g.browser_register import register_one as browser_register_one
 
 # 基础配置
 site_url = "https://accounts.x.ai"
@@ -461,6 +463,58 @@ def interactive_config():
     return threads, total
 
 
+async def _run_browser_registration(threads: int, total: int) -> None:
+    """
+    使用浏览器自动化完成注册（参考 jiang068/grok_reg 项目）。
+
+    当 Action ID 无法从注册页面提取时，自动切换至此模式。
+    启动 threads 个并发浏览器任务，每个任务注册成功后继续循环，
+    直到达到目标数量 total 为止。
+    """
+    global success_count
+
+    email_service = EmailService(
+        api_key=runtime_config["moemail_api_key"],
+        base_url=runtime_config["moemail_base_url"],
+        domain=runtime_config["moemail_domain"],
+    )
+
+    proxies = runtime_config.get("proxies", {})
+    proxy_url = proxies.get("http") or proxies.get("https") if proxies else None
+
+    async def worker() -> None:
+        global success_count
+        while not stop_event.is_set():
+            result = await browser_register_one(email_service, proxy=proxy_url)
+            if stop_event.is_set():
+                return
+            if result and result.get("sso"):
+                with file_lock:
+                    if success_count >= target_count:
+                        if not stop_event.is_set():
+                            stop_event.set()
+                        return
+                    with open(output_file, "a") as f:
+                        f.write(result["sso"] + "\n")
+                    success_count += 1
+                    elapsed = time.time() - start_time
+                    avg = elapsed / success_count
+                    print(f"[+] {success_count}/{target_count} | {avg:.1f}s/个")
+                    if success_count >= target_count and not stop_event.is_set():
+                        stop_event.set()
+            else:
+                # 短暂等待再重试，防止失败时紧密循环
+                await asyncio.sleep(2)
+
+    tasks = [asyncio.create_task(worker()) for _ in range(threads)]
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except asyncio.CancelledError:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 def main():
     global flaresolverr_service, turnstile_available, target_count, output_file, start_time
 
@@ -495,10 +549,10 @@ def main():
     else:
         print(f"[!] FlareSolverr 不可用 ({runtime_config['flaresolverr_url']})，将跳过 cf_clearance 注入")
 
-    # 校验：至少需要一个验证服务
+    # 校验：HTTP 模式需要至少一个验证服务；浏览器模式无需此检查
     if not turnstile_available and not flaresolverr_ok:
-        print("\n[-] 错误: Turnstile Solver/YesCaptcha 和 FlareSolverr 均不可用，至少需要其中一个")
-        return
+        print("\n[!] Turnstile Solver/YesCaptcha 和 FlareSolverr 均不可用")
+        print("    HTTP 注册模式需要其中一个；如果页面结构已变更，将自动切换至浏览器注册模式")
 
     # 4. 扫描 Grok 注册页面参数
     print("\n[*] 正在初始化，扫描注册页面参数...")
@@ -554,15 +608,55 @@ def main():
                 config["action_id"] = action_id
                 print(f"[+] Action ID: {config['action_id']}")
         except Exception as e:
-            print(f"[-] 初始化扫描失败: {e}")
-            return
+            print(f"[-] 初始化扫描失败: {e}，将尝试浏览器注册模式")
 
     if not config["action_id"]:
-        print("[-] 错误: 未找到 Action ID，无法继续")
-        print(f"    提示: 注册页面结构可能已更新，请检查 {start_url} 是否可访问")
+        print("[!] 未找到 Action ID（注册页面结构已更新），切换至浏览器注册模式...")
+        print("[*] 浏览器模式基于 camoufox，无需 Action ID 即可完成注册")
+
+        # 5b. 浏览器注册模式（无需 Action ID）
+        target_count = total
+        start_time = time.time()
+        stop_event.clear()
+
+        os.makedirs("keys", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"keys/grok_{timestamp}_{target_count}.txt"
+
+        print(f"\n[*] 启动 {threads} 个并发浏览器，目标 {target_count} 个账号")
+        print(f"[*] 输出文件: {output_file}")
+        print("=" * 60)
+
+        try:
+            asyncio.run(_run_browser_registration(threads, total))
+        except KeyboardInterrupt:
+            print("\n[!] 收到中断信号，正在停止...")
+            stop_event.set()
+
+        # 二次验证 NSFW
+        if os.path.exists(output_file):
+            print(f"\n[*] 开始二次验证 NSFW...")
+            nsfw_service = NsfwSettingsService()
+            with open(output_file, "r") as f:
+                tokens = [line.strip() for line in f if line.strip()]
+            ok_count = 0
+            for sso in tokens:
+                try:
+                    result = nsfw_service.enable_unhinged(sso)
+                    if result.get("ok"):
+                        ok_count += 1
+                    else:
+                        print(f"[-] enable_unhinged 失败: {result.get('error', result)}")
+                except Exception as e:
+                    print(f"[-] enable_unhinged 异常: {e}")
+            print(f"[*] 二次验证完成: {ok_count}/{len(tokens)}")
+
+        elapsed = time.time() - start_time
+        print(f"\n[*] 完成！共注册 {success_count} 个账号，耗时 {elapsed:.1f}s")
+        print(f"[*] 结果保存至: {output_file}")
         return
 
-    # 5. 启动注册线程
+    # 5. 启动注册线程（HTTP 模式，需要 Action ID）
     target_count = total
     start_time = time.time()
     stop_event.clear()

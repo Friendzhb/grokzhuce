@@ -48,9 +48,9 @@
           │  2. 发送验证码 (accounts.x.ai)      │
           │  3. 轮询获取验证码 (moemail API)     │
           │  4. 验证邮箱验证码 (accounts.x.ai)   │
-          │  5. 获取 Turnstile Token (可选)      │
-          │  6. 获取 cf_clearance (可选)         │
-          │  * Turnstile / FlareSolverr 至少一个  │
+          │  5. 获取 Turnstile Token (若可用)    │
+          │  6. 获取 cf_clearance (若可用)       │
+          │  (5 和 6 至少需要其中一个服务可用)     │
           │  7. 提交注册请求                     │
           │  8. 同意用户协议 (TOS)               │
           │  9. 开启 NSFW 模式                   │
@@ -163,9 +163,23 @@ FLARESOLVERR_TIMEOUT=60
 | `FLARESOLVERR_REFRESH_INTERVAL` | ❌ | `600` | cf_clearance 缓存刷新间隔（秒） |
 | `FLARESOLVERR_TIMEOUT` | ❌ | `60` | FlareSolverr 请求超时（秒） |
 
-### 第四步：配置 FlareSolverr（可选，已在第一步覆盖）
+### 第四步：部署 FlareSolverr（可选）
 
-如果在使用流程的第一步中选择了 FlareSolverr，确保在 `.env` 中配置了 `FLARESOLVERR_URL`。
+> 如果已经有 Turnstile Solver 或 YesCaptcha，可跳过此步。
+> Turnstile Solver 和 FlareSolverr 二选一即可，也可同时使用。
+
+```bash
+docker run -d \
+  --name flaresolverr \
+  -p 8191:8191 \
+  ghcr.io/flaresolverr/flaresolverr:latest
+```
+
+验证 FlareSolverr 是否正常：
+
+```bash
+curl http://localhost:8191/
+```
 
 ## 使用流程
 

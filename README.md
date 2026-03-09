@@ -7,11 +7,11 @@
 - 自动创建临时邮箱（基于 [moemail](https://github.com/beilunyang/moemail) 服务）
 - 自动获取邮箱验证码
 - 自动完成 Grok 注册流程（含 Turnstile 验证码自动解决）
+- 支持 FlareSolverr 绕过 Cloudflare（可选，与 Turnstile Solver 二选一即可）
 - 自动同意用户协议（TOS）
 - 自动开启 NSFW/Unhinged 模式
 - 注册完成后自动清理临时邮箱
 - 支持多线程并发注册
-- 支持 FlareSolverr 绕过 Cloudflare（可选）
 - 支持 HTTP 代理
 
 ## 整体架构
@@ -24,12 +24,12 @@
          │
          ├──▶ Turnstile Solver (本地验证码服务, 端口 5072)
          │       或 YesCaptcha API (第三方, 可选)
+         │       ↕ 与 FlareSolverr 二选一即可
+         ├──▶ FlareSolverr (Cloudflare 绕过, 可选, 端口 8191)
          │
          ├──▶ accounts.x.ai (Grok 注册 API)
          │
-         ├──▶ grok.com (NSFW/Unhinged 设置 API)
-         │
-         └──▶ FlareSolverr (Cloudflare 绕过, 可选, 端口 8191)
+         └──▶ grok.com (NSFW/Unhinged 设置 API)
 ```
 
 ## 注册流程
@@ -48,8 +48,9 @@
           │  2. 发送验证码 (accounts.x.ai)      │
           │  3. 轮询获取验证码 (moemail API)     │
           │  4. 验证邮箱验证码 (accounts.x.ai)   │
-          │  5. 获取 Turnstile Token            │
-          │  6. 获取 cf_clearance (可选)         │
+          │  5. 获取 Turnstile Token (若可用)    │
+          │  6. 获取 cf_clearance (若可用)       │
+          │  (5 和 6 至少需要其中一个服务可用)     │
           │  7. 提交注册请求                     │
           │  8. 同意用户协议 (TOS)               │
           │  9. 开启 NSFW 模式                   │
@@ -164,7 +165,8 @@ FLARESOLVERR_TIMEOUT=60
 
 ### 第四步：部署 FlareSolverr（可选）
 
-如果注册过程中遇到 Cloudflare 403 拦截，需要部署 FlareSolverr：
+> 如果已经有 Turnstile Solver 或 YesCaptcha，可跳过此步。
+> Turnstile Solver 和 FlareSolverr 二选一即可，也可同时使用。
 
 ```bash
 docker run -d \
@@ -181,9 +183,12 @@ curl http://localhost:8191/
 
 ## 使用流程
 
-### 第一步：启动 Turnstile Solver
+### 第一步：启动验证服务（Turnstile Solver 和 FlareSolverr 至少一个）
 
-> 如果在 `.env` 中配置了 `YESCAPTCHA_KEY`，则跳过此步骤。
+> Turnstile Solver 和 FlareSolverr 二选一即可，也可同时使用。
+> 如果在 `.env` 中配置了 `YESCAPTCHA_KEY`，则无需启动本地 Turnstile Solver。
+
+**方式一：启动 Turnstile Solver**
 
 在终端中运行：
 
@@ -196,6 +201,21 @@ python api_solver.py --browser_type camoufox --thread 5 --debug
 ```
 
 等待 Solver 启动完成，看到监听端口日志后即可（默认 `http://127.0.0.1:5072`）。
+
+**方式二：启动 FlareSolverr（如果不使用 Turnstile Solver）**
+
+```bash
+docker run -d \
+  --name flaresolverr \
+  -p 8191:8191 \
+  ghcr.io/flaresolverr/flaresolverr:latest
+```
+
+验证 FlareSolverr 是否正常：
+
+```bash
+curl http://localhost:8191/
+```
 
 ### 第二步：运行注册程序
 
@@ -270,6 +290,6 @@ cat keys/grok_20260204_190000_10.txt
 ## 注意事项
 
 - 需要自行部署 moemail 临时邮箱服务，并确保邮箱域名（如 `zhouhongbin.top`）配置正确
-- 运行前必须先启动 Turnstile Solver（除非使用 YesCaptcha）
-- FlareSolverr 为可选服务，遇到 Cloudflare 拦截时才需要
+- Turnstile Solver 和 FlareSolverr 至少需要部署其中一个（也可同时使用）
+- 如使用 YesCaptcha 替代本地 Turnstile Solver，在 `.env` 中配置 `YESCAPTCHA_KEY` 即可
 - 仅供学习研究使用

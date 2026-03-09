@@ -63,6 +63,7 @@ target_count = 100
 stop_event = threading.Event()
 output_file = None
 flaresolverr_service = None  # 全局 FlareSolverr 实例
+turnstile_available = False  # Turnstile Solver / YesCaptcha 是否可用
 
 def generate_random_name() -> str:
     length = random.randint(4, 6)
@@ -214,12 +215,18 @@ def register_single_thread():
                         email_service.delete_email(email_id)
                         return
 
-                    task_id = turnstile_service.create_task(site_url, config["site_key"])
-                    token = turnstile_service.get_response(task_id)
+                    token = ""
+                    if turnstile_available:
+                        try:
+                            task_id = turnstile_service.create_task(site_url, config["site_key"])
+                            token = turnstile_service.get_response(task_id)
+                        except Exception as e:
+                            print(f"[-] {email_address} Turnstile 请求异常: {e}")
+                            token = None
 
-                    if not token or token == "CAPTCHA_FAIL":
-                        print(f"[-] {email_address} 第 {attempt+1} 次获取 Turnstile token 失败")
-                        continue
+                        if not token or token == "CAPTCHA_FAIL":
+                            print(f"[-] {email_address} 第 {attempt+1} 次获取 Turnstile token 失败")
+                            continue
 
                     # 尝试获取 cf_clearance（可选，失败不影响主流程）
                     cf_info = get_cf_clearance(site_url)
@@ -402,7 +409,7 @@ def interactive_config():
     )
 
     # --- Turnstile / YesCaptcha ---
-    print("\n[验证码服务]")
+    print("\n[验证码服务（可选，和 FlareSolverr 二选一即可）]")
     runtime_config["yescaptcha_key"] = _prompt(
         f"  YesCaptcha Key (留空使用本地 Turnstile Solver) [{os.getenv('YESCAPTCHA_KEY', '') or '未设置'}]: ",
         os.getenv("YESCAPTCHA_KEY", ""),
@@ -412,7 +419,7 @@ def interactive_config():
         os.environ["YESCAPTCHA_KEY"] = runtime_config["yescaptcha_key"]
 
     # --- FlareSolverr ---
-    print("\n[FlareSolverr Cloudflare 绕过]")
+    print("\n[FlareSolverr Cloudflare 绕过（可选，和 Turnstile Solver 二选一即可）]")
     runtime_config["flaresolverr_url"] = _prompt(
         f"  FlareSolverr URL [{os.getenv('FLARESOLVERR_URL', 'http://localhost:8191')}]: ",
         os.getenv("FLARESOLVERR_URL", "http://localhost:8191"),
@@ -454,7 +461,7 @@ def interactive_config():
 
 
 def main():
-    global flaresolverr_service, target_count, output_file, start_time
+    global flaresolverr_service, turnstile_available, target_count, output_file, start_time
 
     print("=" * 60 + "\nGrok 注册机\n" + "=" * 60)
 
@@ -466,18 +473,33 @@ def main():
         print("\n[-] 错误: moemail API Key 未设置，无法继续")
         return
 
-    # 2. 初始化 FlareSolverr
+    # 2. 检查 Turnstile Solver / YesCaptcha 可用性
+    _ts = TurnstileService()
+    turnstile_available = _ts.is_available()
+    if turnstile_available:
+        print(f"\n[+] Turnstile 验证服务可用"
+              + (" (YesCaptcha)" if _ts.yescaptcha_key else " (本地 Solver)"))
+    else:
+        print(f"\n[!] Turnstile 验证服务不可用（本地 Solver 未启动且未配置 YesCaptcha）")
+
+    # 3. 初始化 FlareSolverr
     flaresolverr_service = FlareSolverrService(
         url=runtime_config["flaresolverr_url"],
         refresh_interval=runtime_config["flaresolverr_refresh_interval"],
         timeout=runtime_config["flaresolverr_timeout"],
     )
-    if flaresolverr_service.is_available():
-        print(f"\n[+] FlareSolverr 已连接: {runtime_config['flaresolverr_url']}")
+    flaresolverr_ok = flaresolverr_service.is_available()
+    if flaresolverr_ok:
+        print(f"[+] FlareSolverr 已连接: {runtime_config['flaresolverr_url']}")
     else:
-        print(f"\n[!] FlareSolverr 不可用 ({runtime_config['flaresolverr_url']})，将跳过 cf_clearance 注入")
+        print(f"[!] FlareSolverr 不可用 ({runtime_config['flaresolverr_url']})，将跳过 cf_clearance 注入")
 
-    # 3. 扫描 Grok 注册页面参数
+    # 校验：至少需要一个验证服务
+    if not turnstile_available and not flaresolverr_ok:
+        print("\n[-] 错误: Turnstile Solver/YesCaptcha 和 FlareSolverr 均不可用，至少需要其中一个")
+        return
+
+    # 4. 扫描 Grok 注册页面参数
     print("\n[*] 正在初始化，扫描注册页面参数...")
     start_url = f"{site_url}/sign-up"
     with requests.Session(impersonate=DEFAULT_IMPERSONATE) as s:
@@ -516,7 +538,7 @@ def main():
         print("[-] 错误: 未找到 Action ID，无法继续")
         return
 
-    # 4. 启动注册线程
+    # 5. 启动注册线程
     target_count = total
     start_time = time.time()
     stop_event.clear()
@@ -538,7 +560,7 @@ def main():
             stop_event.set()
             concurrent.futures.wait(futures, timeout=30)
 
-    # 5. 二次验证 NSFW
+    # 6. 二次验证 NSFW
     if os.path.exists(output_file):
         print(f"\n[*] 开始二次验证 NSFW...")
         nsfw_service = NsfwSettingsService()

@@ -409,7 +409,13 @@ async def register_one(
         return tokens if tokens.get("sso") else None
 
     except Exception as e:
+        err_msg = str(e)
         print(f"[-] 浏览器注册异常: {e}")
+        if "Failed to launch" in err_msg or "executable doesn't exist" in err_msg.lower():
+            print("[!] 浏览器进程启动失败，请确认已下载 camoufox 浏览器内核:")
+            print("    python -m camoufox fetch")
+            print("[!] 如果是 Linux 服务器，可能还需要安装系统依赖:")
+            print("    sudo apt-get install -y libgtk-3-0 libdbus-glib-1-2 libxt6 libasound2")
         return None
     finally:
         try:

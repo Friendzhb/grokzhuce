@@ -1,9 +1,5 @@
-camoufox
+# 核心依赖（纯 HTTP 模式，无需浏览器／图形界面）
 curl_cffi
 beautifulsoup4
 python-dotenv
 requests
-# api_solver.py (本地 Turnstile Solver) 额外依赖
-quart
-rich
-patchright

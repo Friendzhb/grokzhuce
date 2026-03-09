@@ -1,0 +1,21 @@
+# 浏览器相关可选依赖
+# 以下两种场景需要安装此文件：
+#   1. 使用本地 Turnstile Solver（api_solver.py / TurnstileSolver.sh）
+#   2. 使用浏览器兜底注册模式（camoufox 无头浏览器，在 HTTP 模式失效时自动回退）
+#
+# 安装命令：
+#   pip install -r requirements-browser.txt -i https://pypi.org/simple/
+# 安装后还需执行（仅首次，下载浏览器内核约 100 MB）：
+#   python -m camoufox fetch
+
+# camoufox — 反指纹浏览器，用于 Turnstile Solver 和浏览器注册兜底
+camoufox
+
+# patchright — Playwright 反检测分支，供本地 Turnstile Solver (api_solver.py) 使用
+patchright
+
+# quart — 异步 Web 框架，api_solver.py 内置 HTTP Server 使用
+quart
+
+# rich — 终端美化输出，api_solver.py 启动界面使用
+rich

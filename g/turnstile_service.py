@@ -20,6 +20,16 @@ class TurnstileService:
         self.solver_url = solver_url
         self.yescaptcha_api = "https://api.yescaptcha.com"
 
+    def is_available(self):
+        """检查 Turnstile 验证服务是否可用（YesCaptcha 或本地 Solver）"""
+        if self.yescaptcha_key:
+            return True
+        try:
+            res = requests.get(f"{self.solver_url}/", timeout=5)
+            return res.status_code == 200
+        except Exception:
+            return False
+
     def create_task(self, siteurl, sitekey):
         """
         创建Turnstile验证任务

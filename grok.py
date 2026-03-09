@@ -40,6 +40,7 @@ def get_random_chrome_profile():
 runtime_config = {
     "moemail_api_key": "",
     "moemail_base_url": "https://mail.zhouhongbin.top",
+    "moemail_domain": "zhouhongbin.top",
     "yescaptcha_key": "",
     "flaresolverr_url": "http://localhost:8191",
     "flaresolverr_refresh_interval": 600,
@@ -137,6 +138,7 @@ def register_single_thread():
         email_service = EmailService(
             api_key=runtime_config["moemail_api_key"],
             base_url=runtime_config["moemail_base_url"],
+            domain=runtime_config["moemail_domain"],
         )
         turnstile_service = TurnstileService()
         user_agreement_service = UserAgreementService()
@@ -351,6 +353,7 @@ def register_single_thread():
                     email_service = EmailService(
                         api_key=runtime_config["moemail_api_key"],
                         base_url=runtime_config["moemail_base_url"],
+                        domain=runtime_config["moemail_domain"],
                     )
                     email_service.delete_email(email_id)
                 except Exception:
@@ -392,6 +395,10 @@ def interactive_config():
     runtime_config["moemail_base_url"] = _prompt(
         f"  moemail Base URL [{os.getenv('MOEMAIL_BASE_URL', 'https://mail.zhouhongbin.top')}]: ",
         os.getenv("MOEMAIL_BASE_URL", "https://mail.zhouhongbin.top"),
+    )
+    runtime_config["moemail_domain"] = _prompt(
+        f"  邮箱域名 [{os.getenv('MOEMAIL_DOMAIN', 'zhouhongbin.top')}]: ",
+        os.getenv("MOEMAIL_DOMAIN", "zhouhongbin.top"),
     )
 
     # --- Turnstile / YesCaptcha ---
@@ -437,6 +444,7 @@ def interactive_config():
     print("\n[配置确认]")
     print(f"  moemail API Key : {'*' * 8 + '...' if runtime_config['moemail_api_key'] else '未设置'}")
     print(f"  moemail Base URL: {runtime_config['moemail_base_url']}")
+    print(f"  邮箱域名        : {runtime_config['moemail_domain']}")
     print(f"  YesCaptcha Key  : {'已设置' if runtime_config['yescaptcha_key'] else '未设置（本地 Solver）'}")
     print(f"  FlareSolverr    : {runtime_config['flaresolverr_url']}")
     print(f"  代理            : {runtime_config['proxies'] or '不使用'}")

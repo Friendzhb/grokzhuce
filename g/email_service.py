@@ -9,10 +9,11 @@ from dotenv import load_dotenv
 
 
 class EmailService:
-    def __init__(self, api_key=None, base_url=None):
+    def __init__(self, api_key=None, base_url=None, domain=None):
         load_dotenv()
         self.api_key = api_key or os.getenv("MOEMAIL_API_KEY", "").strip()
         self.base_url = (base_url or os.getenv("MOEMAIL_BASE_URL", "https://mail.zhouhongbin.top")).rstrip("/")
+        self._default_domain = domain or os.getenv("MOEMAIL_DOMAIN", "").strip()
         if not self.api_key:
             raise ValueError("Missing: MOEMAIL_API_KEY (请在 .env 或启动时输入)")
         self.headers = {
@@ -22,7 +23,9 @@ class EmailService:
         self._domain = None  # 缓存域名
 
     def _get_domain(self):
-        """从 /api/config 获取首个可用邮箱域名，结果缓存"""
+        """从 /api/config 获取首个可用邮箱域名，结果缓存。
+        优先级：API 返回 > 用户配置（MOEMAIL_DOMAIN）> 默认 moemail.app
+        """
         if self._domain:
             return self._domain
         try:
@@ -41,7 +44,7 @@ class EmailService:
                 print(f"[-] 获取域名配置失败: {res.status_code} - {res.text[:80]}")
         except Exception as e:
             print(f"[-] 获取域名配置异常: {e}")
-        self._domain = "moemail.app"  # 回退默认值
+        self._domain = self._default_domain or "moemail.app"  # 优先使用用户配置的域名
         return self._domain
 
     def create_email(self):

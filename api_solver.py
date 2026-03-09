@@ -219,7 +219,7 @@ class TurnstileAPIServer:
                 except Exception as e:
                     err_msg = str(e)
                     logger.error(f"Browser {i + 1} launch failed: {err_msg}")
-                    if "Failed to launch" in err_msg:
+                    if "failed to launch" in err_msg.lower():
                         logger.error("请确认已安装浏览器: patchright install chromium")
                         logger.error("Linux 服务器可能还需安装系统依赖: sudo apt-get install -y libgtk-3-0 libnss3 libatk-bridge2.0-0 libdrm2 libxcomposite1 libxrandr2 libgbm1 libasound2")
             elif self.browser_type == "camoufox" and camoufox:
@@ -228,7 +228,7 @@ class TurnstileAPIServer:
                 except Exception as e:
                     err_msg = str(e)
                     logger.error(f"Browser {i + 1} launch failed: {err_msg}")
-                    if "Failed to launch" in err_msg:
+                    if "failed to launch" in err_msg.lower():
                         logger.error("请确认已下载浏览器内核: python -m camoufox fetch")
                         logger.error("Linux 服务器可能还需安装系统依赖: sudo apt-get install -y libgtk-3-0 libdbus-glib-1-2 libxt6 libasound2")
 

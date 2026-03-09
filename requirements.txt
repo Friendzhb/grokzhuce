@@ -3,3 +3,7 @@ curl_cffi
 beautifulsoup4
 python-dotenv
 requests
+# api_solver.py (本地 Turnstile Solver) 额外依赖
+quart
+rich
+patchright

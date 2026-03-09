@@ -11,6 +11,7 @@ from g import EmailService, TurnstileService, UserAgreementService, NsfwSettings
 # 基础配置
 site_url = "https://accounts.x.ai"
 DEFAULT_IMPERSONATE = "chrome120"
+RSC_ACTION_ID_PATTERN = r'"id":"([a-fA-F0-9]{20,})","bound"'
 CHROME_PROFILES = [
     {"impersonate": "chrome110", "version": "110.0.0.0", "brand": "chrome"},
     {"impersonate": "chrome119", "version": "119.0.0.0", "brand": "chrome"},
@@ -513,29 +514,52 @@ def main():
             tree_match = re.search(r'next-router-state-tree":"([^"]+)"', html)
             if tree_match:
                 config["state_tree"] = tree_match.group(1)
-            # Action ID
-            soup = BeautifulSoup(html, 'html.parser')
-            js_urls = [
-                urljoin(start_url, script['src'])
-                for script in soup.find_all('script', src=True)
-                if '_next/static' in script['src']
-            ]
-            for js_url in js_urls:
-                try:
-                    js_content = s.get(js_url, timeout=10).text
-                    match = re.search(r'7f[a-fA-F0-9]{40}', js_content)
-                    if match:
-                        config["action_id"] = match.group(0)
-                        print(f"[+] Action ID: {config['action_id']}")
+            # Action ID — 多策略提取
+            action_id = None
+
+            # 策略 1: 从 HTML 内联 RSC flight data 中查找
+            html_unescaped = html.replace('\\"', '"')
+            rsc_match = re.search(RSC_ACTION_ID_PATTERN, html_unescaped)
+            if rsc_match:
+                action_id = rsc_match.group(1)
+
+            # 策略 2: 从 _next/static JS 文件中查找
+            if not action_id:
+                soup = BeautifulSoup(html, 'html.parser')
+                js_urls = [
+                    urljoin(start_url, script['src'])
+                    for script in soup.find_all('script', src=True)
+                    if '_next/static' in script['src']
+                ]
+                for js_url in js_urls:
+                    if action_id:
                         break
-                except Exception as e:
-                    print(f"[-] 获取 JS 文件失败 ({js_url}): {e}")
+                    try:
+                        js_content = s.get(js_url, timeout=10).text
+                        # 原始 pattern: 7f 前缀 + 40 个十六进制字符
+                        m = re.search(r'7f[a-fA-F0-9]{40}', js_content)
+                        if m:
+                            action_id = m.group(0)
+                            break
+                        # 从 JS 中查找 RSC server reference 格式
+                        js_unescaped = js_content.replace('\\"', '"')
+                        m = re.search(RSC_ACTION_ID_PATTERN, js_unescaped)
+                        if m:
+                            action_id = m.group(1)
+                            break
+                    except Exception as e:
+                        print(f"[-] 获取 JS 文件失败 ({js_url}): {e}")
+
+            if action_id:
+                config["action_id"] = action_id
+                print(f"[+] Action ID: {config['action_id']}")
         except Exception as e:
             print(f"[-] 初始化扫描失败: {e}")
             return
 
     if not config["action_id"]:
         print("[-] 错误: 未找到 Action ID，无法继续")
+        print(f"    提示: 注册页面结构可能已更新，请检查 {start_url} 是否可访问")
         return
 
     # 5. 启动注册线程

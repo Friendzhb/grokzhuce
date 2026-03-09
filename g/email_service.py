@@ -13,7 +13,7 @@ class EmailService:
         load_dotenv()
         self.api_key = api_key or os.getenv("MOEMAIL_API_KEY", "").strip()
         self.base_url = (base_url or os.getenv("MOEMAIL_BASE_URL", "https://mail.zhouhongbin.top")).rstrip("/")
-        self._default_domain = domain or os.getenv("MOEMAIL_DOMAIN", "").strip()
+        self._configured_domain = domain or os.getenv("MOEMAIL_DOMAIN", "").strip()
         if not self.api_key:
             raise ValueError("Missing: MOEMAIL_API_KEY (请在 .env 或启动时输入)")
         self.headers = {
@@ -44,7 +44,7 @@ class EmailService:
                 print(f"[-] 获取域名配置失败: {res.status_code} - {res.text[:80]}")
         except Exception as e:
             print(f"[-] 获取域名配置异常: {e}")
-        self._domain = self._default_domain or "moemail.app"  # 优先使用用户配置的域名
+        self._domain = self._configured_domain or "moemail.app"  # 优先使用用户配置的域名
         return self._domain
 
     def create_email(self):
